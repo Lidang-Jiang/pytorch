@@ -923,7 +923,6 @@ def _should_use_fused_all_gather_matmul_native(
         and len(Bs) == 1
     )
 
-
 def _fused_all_gather_matmul_native(
     A_shard: torch.Tensor,
     B: torch.Tensor,
