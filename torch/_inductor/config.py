@@ -506,16 +506,11 @@ max_autotune_pointwise = os.environ.get("TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE") 
 # enable slow autotuning passes to select gemm algorithms
 max_autotune_gemm = os.environ.get("TORCHINDUCTOR_MAX_AUTOTUNE_GEMM") == "1"
 
-# @warrdeng: enables autotuning gemm configs at epilogue fusion time
+# Autotune gemm configs at epilogue fusion time, skipping unfused autotuning
 autotune_gemm_at_epilogue_fusion_time = (
     os.environ.get("TORCHINDUCTOR_AUTOTUNE_GEMM_AT_EPILOGUE_FUSION_TIME") == "1"
 )
 
-# @warrdeng: debugging only — disables the early exit optimization in epilogue
-# fusion benchmarking so all configs get fused benchmarks regardless of unfused time
-disable_epilogue_fusion_early_exit = (
-    os.environ.get("TORCHINDUCTOR_DISABLE_EPILOGUE_FUSION_EARLY_EXIT") == "1"
-)
 
 inductor_default_autotune_warmup = int(
     os.getenv("TORCHINDUCTOR_DEFAULT_AUTOTUNE_WARMUP", 25)
@@ -857,7 +852,7 @@ loop_index_inversion_in_fusion: bool = True
 score_fusion_memory_threshold = 10
 
 # For Triton Templates, select fastest of best template + epilogue vs best template + separate epilogue kernel
-benchmark_epilogue_fusion: bool = (
+benchmark_epilogue_fusion = (
     os.environ.get("TORCHINDUCTOR_BENCHMARK_EPILOGUE_FUSION", "1") == "1"
 )
 
