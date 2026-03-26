@@ -149,3 +149,48 @@ def normal(
         device = key.device
     result = torch.empty(shape, dtype=dtype, device=device)
     return torch.ops.aten._philox_normal_(result, key, mean, std)
+
+
+def uniform(
+    key: torch.Tensor,
+    *shape: tuple[int, ...],
+    low: float = 0.0,
+    high: float = 1.0,
+    dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+) -> torch.Tensor:
+    r"""Generate uniformly distributed random values from a stateless PRNG key.
+
+    Produces a tensor of the given shape filled with values drawn uniformly
+    from the interval ``[low, high)``. The output is fully determined by the
+    key, so calling with the same key always returns the same result.
+
+    Supports batched keys: if ``key`` has shape ``(*batch, 2)``, the leading
+    dimensions of ``shape`` must be broadcastable with ``*batch`` and each key
+    independently generates its slice of the output.
+
+    Args:
+        key (Tensor): A PRNG key of shape ``(..., 2)`` with dtype ``torch.uint64``.
+        *shape (int): The desired output shape.
+        low (float): Lower bound (inclusive) of the uniform distribution. Default: ``0.0``.
+        high (float): Upper bound (exclusive) of the uniform distribution. Default: ``1.0``.
+        dtype (:class:`torch.dtype`, optional): The desired dtype. Default: ``torch.float32``.
+        device (:class:`torch.device`, optional): The desired device. Default:
+            same device as ``key``.
+
+    Returns:
+        Tensor: A tensor of the given shape filled with uniform random values.
+
+    Example::
+
+        >>> key = torch.func._random.key(42, device="cuda")
+        >>> torch.func._random.uniform(key, (1000,))
+    """
+    if len(shape) == 1 and isinstance(shape[0], Sequence):
+        shape = tuple(shape[0])
+    if dtype is None:
+        dtype = torch.float32
+    if device is None:
+        device = key.device
+    result = torch.empty(shape, dtype=dtype, device=device)
+    return torch.ops.aten._philox_uniform_(result, key, low, high)
