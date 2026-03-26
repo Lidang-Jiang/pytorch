@@ -3775,10 +3775,7 @@ class AlgorithmSelectorCache(PersistentCache):
                 else:
                     precompile_future = None
 
-                def get_timings(
-                    hint_override: int | None = None,
-                    extern_only: bool = False,
-                ):
+                def get_timings(hint_override: int | None = None):
                     assert not hint_override, (
                         "Hint not supported with pipelined autotuning"
                     )
@@ -3810,22 +3807,13 @@ class AlgorithmSelectorCache(PersistentCache):
                     return results
             else:
 
-                def get_timings(
-                    hint_override: int | None = None,
-                    extern_only: bool = False,
-                ):
+                def get_timings(hint_override: int | None = None):
                     filtered_choices = [
                         c
                         for c in choices
                         if not hasattr(c, "hint_override")
                         or c.hint_override == hint_override
                     ]
-                    if extern_only:
-                        filtered_choices = [
-                            c
-                            for c in filtered_choices
-                            if isinstance(c, ExternKernelCaller)
-                        ]
                     timings = self.do_autotuning(
                         name,
                         input_nodes,
@@ -3836,7 +3824,6 @@ class AlgorithmSelectorCache(PersistentCache):
                         precompile_fn,
                         hint_override=hint_override,
                         best_config_future=best_config_future,
-                        skip_precompilation=extern_only,
                     )
                     min_extern_choice = float("inf")
                     for choice, timing in timings.items():
@@ -4039,7 +4026,6 @@ class AlgorithmSelectorCache(PersistentCache):
         hint_override: int | None = None,
         best_config_future=None,
         is_collective=False,
-        skip_precompilation=False,
     ):
         """Execute the autotuning process for kernel algorithm selection.
 
@@ -4095,9 +4081,7 @@ class AlgorithmSelectorCache(PersistentCache):
 
         precompile_start_ts = time.time()
 
-        if skip_precompilation:
-            precompile_times = {}
-        elif not use_pipelined_autotuning():
+        if not use_pipelined_autotuning():
             with dynamo_timed(
                 f"{name}_template_precompiling",
                 log_pt2_compile_event=True,

@@ -4316,12 +4316,19 @@ class Scheduler:
                 # TODO: move CantSplit import to top of file
                 from torch._inductor.codegen.simd import CantSplit
 
-                # 1. Get only extern/cuBLAS baseline timing.
-                #    extern_only=True skips unfused Triton autotuning entirely.
-                choice_timings = multi_node.choice_timings(extern_only=True)
-                extern_time = (
-                    min(choice_timings.values()) if choice_timings else float("inf")
-                )
+                # 1. Get extern/cuBLAS baseline timing by benchmarking directly,
+                #    bypassing the autotuning pipeline entirely. We use
+                #    bmreq.benchmark() (no args) which creates its own tensors
+                #    from stored metadata. Extern callers (cuBLAS) don't need
+                #    precompilation — they're pre-built libraries, not JIT-compiled.
+                extern_time = float("inf")
+                for choice in multi_node.choices:
+                    if not isinstance(choice, TritonTemplateCallerBase):
+                        # pyrefly: ignore [missing-attribute]
+                        assert choice.bmreq is not None
+                        # pyrefly: ignore [missing-attribute]
+                        timing = choice.bmreq.benchmark()
+                        extern_time = min(extern_time, timing)
 
                 # 2. Get epilogue (node2) runtime estimate
                 ms2 = node2._get_estimated_runtime()

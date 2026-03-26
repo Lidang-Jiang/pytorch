@@ -5613,12 +5613,8 @@ class MultiTemplateBuffer(TritonTemplateBuffer):
         return self._choices
 
     def choice_timings(
-        self, hint_override: int | None = None, extern_only: bool = False
+        self, hint_override: int | None = None
     ) -> dict[ChoiceCaller, float]:
-        if extern_only:
-            # Don't cache — extern-only is used once and must not
-            # shadow the full timings that get_min_choice() needs.
-            return self._choice_timings_fn(hint_override, extern_only=True)
         if hint_override not in self._choice_timings:
             self._choice_timings[hint_override] = self._choice_timings_fn(hint_override)
         return self._choice_timings[hint_override]
