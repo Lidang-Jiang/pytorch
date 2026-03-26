@@ -4310,6 +4310,80 @@ class Scheduler:
             if self._has_layout_conflict_for_template(multi_node):
                 return FusionResult.fuse(False)
 
+            # @warrdeng: Autotune all Triton configs at fusion time.
+            # TLDR: We fuse all configs and benchmark them fused, comparing against the extern (cuBLAS) baseline. We skip unfused benchmarking
+            if config.autotune_gemm_at_epilogue_fusion_time and epilogue_fusion:
+                # TODO: move CantSplit import to top of file
+                from torch._inductor.codegen.simd import CantSplit
+
+                # 1. Get only extern/cuBLAS baseline timing.
+                #    extern_only=True skips unfused Triton autotuning entirely.
+                choice_timings = multi_node.choice_timings(extern_only=True)
+                extern_time = (
+                    min(choice_timings.values()) if choice_timings else float("inf")
+                )
+
+                # 2. Get epilogue (node2) runtime estimate
+                ms2 = node2._get_estimated_runtime()
+
+                # 3. Compile ALL Triton choices with fusion (no
+                #    max_epilogue_benchmarked_choices limit)
+                future_choices: list[tuple[Any, LambdaFuture | None, ModuleType]] = []
+                for choice in multi_node.choices:
+                    if not isinstance(choice, TritonTemplateCallerBase):
+                        continue
+                    with multi_node.swap_as_triton_caller(choice):
+                        try:
+                            future_choices.append(
+                                (
+                                    choice,
+                                    *self.compile_kernel(node_list_fused),
+                                )
+                            )
+                        except CantSplit:
+                            continue
+
+                if not future_choices:
+                    return FusionResult.fuse(False)
+
+                # 4. Benchmark all fused choices (same as prod bench_epilogue
+                #    path, but we always benchmark rather than using the
+                #    register-count heuristic)
+                min_ms_fused = float("inf")
+                ms_fused_choice: TritonTemplateCallerBase | None = None
+                new_timings: dict[Any, float] = {}
+                for choice, future, mod_fused in future_choices:
+                    try:
+                        if future is not None:
+                            future.result()
+                    except Exception as e:
+                        if fusion_log.isEnabledFor(logging.DEBUG):
+                            fusion_log.debug(  # noqa: G200
+                                "Exception compiling fused epilogue: %s",
+                                str(e),
+                            )
+                        continue
+                    with multi_node.swap_as_triton_caller(choice):
+                        ms_fused, path = self.benchmark_codegened_module(
+                            mod_fused,
+                            # pyrefly: ignore [bad-argument-type]
+                            device,
+                        )
+                        new_timings[choice] = ms_fused
+                        if ms_fused < min_ms_fused:
+                            min_ms_fused = ms_fused
+                            ms_fused_choice = choice
+
+                # 5. Compare best fused vs extern + epilogue
+                log_fusion(min_ms_fused, extern_time, ms2)
+
+                if min_ms_fused < (extern_time + ms2) and ms_fused_choice is not None:
+                    multi_node.finalize_as_triton_caller(ms_fused_choice)
+                    multi_node._choice_timings[None] = new_timings
+                    return FusionResult.fuse(True)
+                else:
+                    return FusionResult.fuse(False)
+
             hint_override_best_fusion_choice: dict[
                 int | None, TritonTemplateCallerBase
             ] = {}
@@ -4373,7 +4447,7 @@ class Scheduler:
             min_choice: ir.ChoiceCaller | None = None
             if not get_choice_timings_async:
                 # Eagerly compile and benchmark non-template nodes
-                choice_timings = multi_node.choice_timings()  # @warrdeng: we might need to modify this. currently this is benchmarking on all unfused kernels
+                choice_timings = multi_node.choice_timings()
                 min_choice, ms1 = multi_node.get_min_choice()
                 choice_timings_iter = sorted(
                     choice_timings.items(), key=operator.itemgetter(1)
@@ -4418,17 +4492,16 @@ class Scheduler:
                 ):
                     continue
 
-                if bench_epilogue and unfused_time >= ms1 + ms2:
-                    # @warrdeng: we want to benchmark all configs, regardless of unfused ranking order
-                    if not config.autotune_gemm_at_epilogue_fusion_time:
-                        break
+                if (
+                    bench_epilogue
+                    and unfused_time >= ms1 + ms2
+                    and not config.disable_epilogue_fusion_early_exit
+                ):
+                    break
 
                 triton_choices += 1
-                if (
-                    triton_choices > config.max_epilogue_benchmarked_choices
-                ):  # @warrdeng: we want to try all configs
-                    if not config.autotune_gemm_at_epilogue_fusion_time:
-                        break
+                if triton_choices > config.max_epilogue_benchmarked_choices:
+                    break
 
                 with multi_node.swap_as_triton_caller(choice):
                     try:
