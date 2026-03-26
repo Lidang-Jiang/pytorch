@@ -816,6 +816,9 @@ class _BufferIndexing:
     index_str: str
     needs_flatten: bool
 
+    # where possible, tracks the shape of the resulting buffer load expr
+    loaded_array_shape: list[int] | None = None
+
 
 @dataclasses.dataclass
 class _BroadcastedIterVar:
@@ -2056,7 +2059,7 @@ class PallasKernel(SIMDKernel):
         """
         Adjust index expression based on buffer shape (0-dim scalar, multi-dim, etc.).
         """
-        if indexing.needs_flatten or indexing.index_str == "...":
+        if indexing.needs_flatten:
             return indexing
 
         buf_obj = V.graph.get_buffer(name)
@@ -2064,6 +2067,10 @@ class PallasKernel(SIMDKernel):
             return indexing
 
         buf_size = buf_obj.get_size()
+
+        if indexing.index_str == "...":
+            indexing.loaded_array_shape = buf_size.copy()
+            return indexing
 
         # 0-dimensional (scalar) buffer - use [...] to access it
         if len(buf_size) == 0:
@@ -2164,7 +2171,11 @@ class PallasKernel(SIMDKernel):
             slice_str = f"{prefix}::{stride}"
         else:
             slice_str = f"{prefix}{offset_val}::{stride}"
-        return _BufferIndexing(index_str=slice_str, needs_flatten=False)
+
+        loaded_array_shape = buf_size.copy()
+        loaded_array_shape[-1] = (loaded_array_shape[-1] - offset_val) // stride
+
+        return _BufferIndexing(index_str=slice_str, needs_flatten=False, loaded_array_shape=loaded_array_shape)
 
     @staticmethod
     def _gather_permute_expr(load_expr: str, perm: tuple[int, ...]) -> str:
@@ -2217,6 +2228,20 @@ class PallasKernel(SIMDKernel):
                         self.collapsed_output_shape = tuple(
                             collapsed_shape[p] for p in cperm
                         )
+            
+            if indexing.loaded_array_shape:
+                target_shape, _ = self._get_reshape_target_shape_and_numel()
+                if target_shape is not None:
+                    target_shape = [*target_shape]
+                    if target_shape != indexing.loaded_array_shape:
+                        if len(indexing.loaded_array_shape) < len(target_shape):
+                            dim_delta = len(target_shape) - len(indexing.loaded_array_shape)
+                            expand_dims = [-i-1 for i in range(dim_delta)]
+                            expand_dims_str = ", ".join(map(str, expand_dims))
+                            load_expr = f"jnp.expand_dims({load_expr}, axis=({expand_dims_str}))"
+                            indexing.loaded_array_shape += [1] * dim_delta
+                        target_shape_str = ", ".join(tuple(map(str, target_shape)))
+                        load_expr = f"jnp.broadcast_to({load_expr}, ({target_shape_str}))"
 
             return load_expr
 
