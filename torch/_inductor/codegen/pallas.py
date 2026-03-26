@@ -3748,24 +3748,19 @@ from torch._inductor.runtime.runtime_utils import (
 
         return reshape_target_shape, reshape_target_numel
 
+    def _make_reshaped_iter_var_from_1D(
+        self, expr_1D: str, reshape_target_shape: tuple[int, ...]
+    ) -> str:
+        reshape_target_shape_str = ", ".join(tuple(map(str, reshape_target_shape)))
+        return f"{expr_1D}.reshape({reshape_target_shape_str})"
+
     def _make_broadcasted_iteration_var_expr(
-        self, broadcast_vars: list[_BroadcastedIterVar], broadcast_idx: int
+        self,
+        broadcast_vars: list[_BroadcastedIterVar],
+        broadcast_idx: int,
     ) -> str:
         bv = broadcast_vars[broadcast_idx]
-        length = bv.entry.length
-        renamed_length = self.rename_indexing(length)
-        length_str = self.kexpr(renamed_length)
-
-        num_broadcast_dims = len(broadcast_vars)
-        axis_idx = self._broadcast_axis_idx(
-            broadcast_vars, broadcast_idx, num_broadcast_dims
-        )
-        shape_parts = ["1"] * num_broadcast_dims
-        shape_parts[axis_idx] = length_str
-        shape_str = ", ".join(shape_parts)
-        arange = f"jnp.arange({length_str})"
-        reshaped = f"{arange}.reshape({shape_str})"
-        return reshaped
+        return self.kexpr(self.rename_indexing(bv.entry.expr))
 
     def _codegen_iteration_vars(
         self, kernel_body: IndentedBuffer, ctx: _CodegenContext
@@ -3780,6 +3775,17 @@ from torch._inductor.runtime.runtime_utils import (
         reshape_target_shape, reshape_target_numel = (
             self._get_reshape_target_shape_and_numel()
         )
+        for prefix, size in self.numels.items():
+            size_val = self._safe_int(size)
+            if size_val is None:
+                continue
+            index_expr = f"jnp.arange({size_val})"
+
+            if reshape_target_shape is not None and reshape_target_numel == size_val:
+                index_expr = self._make_reshaped_iter_var_from_1D(
+                    index_expr, reshape_target_shape
+                )
+            kernel_body.writeline(f"{prefix}index = {index_expr}")
 
         var_items = list(self.range_tree_nodes.items())
 
