@@ -91,11 +91,6 @@ class TestPhiloxKeySplit(TestCase):
         with self.assertRaises(RuntimeError):
             random.split(key, 4)
 
-    def test_error_wrong_device(self, device):
-        key = random.key(42)  # CPU key
-        with self.assertRaises(RuntimeError):
-            random.split(key, 4)
-
     def test_error_invalid_num_splits(self, device):
         key = random.key(42, device=device)
         with self.assertRaises(RuntimeError):
@@ -110,8 +105,17 @@ class TestPhiloxKeySplit(TestCase):
         with self.assertRaises(RuntimeError):
             random.split(key, 4)
 
+    @onlyCUDA
+    def test_cross_device_consistency(self, device):
+        key_cpu = random.key(42)
+        key_cuda = random.key(42, device=device)
+        self.assertEqual(
+            random.split(key_cpu, 100),
+            random.split(key_cuda, 100).cpu(),
+        )
 
-instantiate_device_type_tests(TestPhiloxKeySplit, globals(), only_for=("cuda"))
+
+instantiate_device_type_tests(TestPhiloxKeySplit, globals(), only_for=("cpu", "cuda"))
 
 
 class TestPhiloxKeyFoldIn(TestCase):
@@ -177,11 +181,6 @@ class TestPhiloxKeyFoldIn(TestCase):
         with self.assertRaises(RuntimeError):
             random.fold_in(key, 0)
 
-    def test_error_wrong_device(self, device):
-        key = random.key(42)  # CPU key
-        with self.assertRaises(RuntimeError):
-            random.fold_in(key, 0)
-
     def test_error_batched_last_dim_not_2(self, device):
         key = torch.tensor(
             [[42, 0, 1], [43, 0, 1]], dtype=torch.uint64, device=device
@@ -189,8 +188,19 @@ class TestPhiloxKeyFoldIn(TestCase):
         with self.assertRaises(RuntimeError):
             random.fold_in(key, 0)
 
+    @onlyCUDA
+    def test_cross_device_consistency(self, device):
+        key_cpu = random.key(42)
+        key_cuda = random.key(42, device=device)
+        self.assertEqual(
+            random.fold_in(key_cpu, 7),
+            random.fold_in(key_cuda, 7).cpu(),
+        )
 
-instantiate_device_type_tests(TestPhiloxKeyFoldIn, globals(), only_for=("cuda"))
+
+instantiate_device_type_tests(
+    TestPhiloxKeyFoldIn, globals(), only_for=("cpu", "cuda")
+)
 
 
 class TestPhiloxNormal(TestCase):
@@ -261,6 +271,7 @@ class TestPhiloxNormal(TestCase):
         with self.assertRaises(RuntimeError):
             random.normal(key, (100,))
 
+    @onlyCUDA
     def test_error_wrong_device(self, device):
         key = random.key(42)  # CPU key
         with self.assertRaises(RuntimeError):
@@ -313,7 +324,7 @@ class TestPhiloxNormal(TestCase):
             random.normal(key, (100,))
 
 
-instantiate_device_type_tests(TestPhiloxNormal, globals(), only_for=("cuda"))
+instantiate_device_type_tests(TestPhiloxNormal, globals(), only_for=("cpu", "cuda"))
 
 
 class TestPhiloxUniform(TestCase):
@@ -386,6 +397,7 @@ class TestPhiloxUniform(TestCase):
         with self.assertRaises(RuntimeError):
             random.uniform(key, (100,))
 
+    @onlyCUDA
     def test_error_wrong_device(self, device):
         key = random.key(42)  # CPU key
         with self.assertRaises(RuntimeError):
@@ -437,8 +449,26 @@ class TestPhiloxUniform(TestCase):
             random.uniform(key_zero, (20 - wrap_at,), dtype=dtype),
         )
 
+    @onlyCUDA
+    def test_cross_device_consistency(self, device):
+        key_cpu = random.key(42)
+        key_cuda = random.key(42, device=device)
+        self.assertEqual(
+            random.uniform(key_cpu, (1000,)),
+            random.uniform(key_cuda, (1000,)).cpu(),
+        )
 
-instantiate_device_type_tests(TestPhiloxUniform, globals(), only_for=("cuda"))
+    @onlyCUDA
+    def test_cross_device_f64_consistency(self, device):
+        key_cpu = random.key(42)
+        key_cuda = random.key(42, device=device)
+        self.assertEqual(
+            random.uniform(key_cpu, (1000,), dtype=torch.float64),
+            random.uniform(key_cuda, (1000,), dtype=torch.float64).cpu(),
+        )
+
+
+instantiate_device_type_tests(TestPhiloxUniform, globals(), only_for=("cpu", "cuda"))
 
 
 class TestPhiloxCompile(TestCase):
@@ -513,7 +543,7 @@ class TestPhiloxCompile(TestCase):
         )
 
 
-instantiate_device_type_tests(TestPhiloxCompile, globals(), only_for=("cuda"))
+instantiate_device_type_tests(TestPhiloxCompile, globals(), only_for=("cpu", "cuda"))
 
 
 if __name__ == "__main__":
