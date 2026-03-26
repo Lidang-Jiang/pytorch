@@ -550,9 +550,9 @@ class TestGridSplit(TestCase):
     def test_1d_shape(self, device):
         k = random.key(42, device=device)
         keys = random.grid_split(k, (100,), (10,))
+        self.assertIsInstance(keys, random.Philox4x32_10Key)
         # 10 tiles, each of size 10
         self.assertEqual(keys.shape, (10, 2))
-        self.assertEqual(keys.dtype, torch.uint64)
 
     def test_1d_uniform_reconstruction(self, device):
         k = random.key(42, device=device)
@@ -773,44 +773,44 @@ instantiate_device_type_tests(TestGridSplit, globals(), only_for=("cpu", "cuda")
 
 class TestPhiloxVmap(TestCase):
     def test_vmap_normal(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
 
-        result = torch.vmap(lambda k: torch.random.normal(k, 5))(keys)
+        result = torch.vmap(lambda k: random.normal(k, 5))(keys)
         self.assertEqual(result.shape, (10, 5))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.normal(keys[i], 5))
+            self.assertEqual(result[i], random.normal(keys[i], 5))
 
     def test_vmap_uniform(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
 
-        result = torch.vmap(lambda k: torch.random.uniform(k, 5))(keys)
+        result = torch.vmap(lambda k: random.uniform(k, 5))(keys)
         self.assertEqual(result.shape, (10, 5))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.uniform(keys[i], 5))
+            self.assertEqual(result[i], random.uniform(keys[i], 5))
 
     def test_vmap_split(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
 
-        result = torch.vmap(lambda k: torch.random.split(k, 3))(keys)
+        result = torch.vmap(lambda k: random.split(k, 3))(keys)
         self.assertEqual(result.shape, (10, 3, 2))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.split(keys[i], 3))
+            self.assertEqual(result[i], random.split(keys[i], 3))
 
     def test_vmap_fold_in(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
 
-        result = torch.vmap(lambda k: torch.random.fold_in(k, 7))(keys)
+        result = torch.vmap(lambda k: random.fold_in(k, 7))(keys)
         self.assertEqual(result.shape, (10, 2))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.fold_in(keys[i], 7))
+            self.assertEqual(result[i], random.fold_in(keys[i], 7))
 
     def test_vmap_inplace_batched_self(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
         out = torch.empty(10, 5, device=device)
 
         def f(o, k):
@@ -819,15 +819,15 @@ class TestPhiloxVmap(TestCase):
         result = torch.vmap(f)(out, keys)
         self.assertEqual(result.shape, (10, 5))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.normal(keys[i], 5))
+            self.assertEqual(result[i], random.normal(keys[i], 5))
 
     def test_vmap_split_then_normal(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 8)
+        key = random.key(42, device=device)
+        keys = random.split(key, 8)
 
         def f(k):
-            subkeys = torch.random.split(k, 3)
-            return torch.random.normal(subkeys, (3, 20))
+            subkeys = random.split(k, 3)
+            return random.normal(subkeys, (3, 20))
 
         result = torch.vmap(f)(keys)
         self.assertEqual(result.shape, (8, 3, 20))
@@ -835,39 +835,39 @@ class TestPhiloxVmap(TestCase):
             self.assertEqual(result[i], f(keys[i]))
 
     def test_vmap_normal_multidim(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 5)
+        key = random.key(42, device=device)
+        keys = random.split(key, 5)
 
-        result = torch.vmap(lambda k: torch.random.normal(k, 4, 3))(keys)
+        result = torch.vmap(lambda k: random.normal(k, 4, 3))(keys)
         self.assertEqual(result.shape, (5, 4, 3))
         for i in range(5):
-            self.assertEqual(result[i], torch.random.normal(keys[i], 4, 3))
+            self.assertEqual(result[i], random.normal(keys[i], 4, 3))
 
     def test_vmap_compiled_normal(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
 
         @torch.compile(backend="aot_eager")
         def f(keys):
-            return torch.vmap(lambda k: torch.random.normal(k, 5))(keys)
+            return torch.vmap(lambda k: random.normal(k, 5))(keys)
 
         result = f(keys)
         self.assertEqual(result.shape, (10, 5))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.normal(keys[i], 5))
+            self.assertEqual(result[i], random.normal(keys[i], 5))
 
     def test_vmap_compiled_uniform(self, device):
-        key = torch.random.key(42, device=device)
-        keys = torch.random.split(key, 10)
+        key = random.key(42, device=device)
+        keys = random.split(key, 10)
 
         @torch.compile(backend="aot_eager")
         def f(keys):
-            return torch.vmap(lambda k: torch.random.uniform(k, 5))(keys)
+            return torch.vmap(lambda k: random.uniform(k, 5))(keys)
 
         result = f(keys)
         self.assertEqual(result.shape, (10, 5))
         for i in range(10):
-            self.assertEqual(result[i], torch.random.uniform(keys[i], 5))
+            self.assertEqual(result[i], random.uniform(keys[i], 5))
 
 
 instantiate_device_type_tests(TestPhiloxVmap, globals(), only_for=("cpu", "cuda"))
