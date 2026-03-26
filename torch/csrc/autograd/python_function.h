@@ -120,6 +120,19 @@ struct THPFunction {
   // https://github.com/pytorch/pytorch/pull/98659#pullrequestreview-1376822560
   bool materialize_non_diff_grads;
 
+  // When true, PyNode::apply passes grads as a single mutable list argument
+  // instead of individual args in an immutable tuple, allowing backward to
+  // free grads mid-execution.
+  // Example when it is needed:
+  // pt2 compilation makes AutogradFunction to run compiled forward and compiled
+  // backward, grads are inputs of compiled backward and standard calling
+  // convention holds reference to the grads (immutable args tuple), which
+  // prevents their deallocation after last use in the middle of backward.
+  // This can contribute to the peak memory.
+  // "boxed_grads_call" calling convention allows to pass grads in mutable list
+  // instead of immutable args tuple.
+  bool boxed_grads_call = false;
+
   PyObject* compiled_autograd_backward_state;
   std::vector<c10::SymInt> compiled_autograd_symints;
 
