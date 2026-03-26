@@ -4,6 +4,8 @@ These are experimental and subject to change without notice.
 Access via ``torch.func._random``.
 """
 
+from collections.abc import Sequence
+
 import torch
 
 
@@ -101,3 +103,49 @@ def fold_in(key: torch.Tensor, data: int) -> torch.Tensor:
         >>> assert torch.equal(k1, keys[1])
     """
     return torch.ops.aten._philox_key_fold_in(key, data)
+
+
+def normal(
+    key: torch.Tensor,
+    *shape: tuple[int, ...],
+    mean: float = 0.0,
+    std: float = 1.0,
+    dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+) -> torch.Tensor:
+    r"""Generate normally distributed random values from a stateless PRNG key.
+
+    Produces a tensor of the given shape filled with values drawn from a normal
+    distribution with the specified ``mean`` and ``std``. The output is fully
+    determined by the key, so calling with the same key always returns the same
+    result.
+
+    Supports batched keys: if ``key`` has shape ``(*batch, 2)``, the leading
+    dimensions of ``shape`` must be broadcastable with ``*batch`` and each key
+    independently generates its slice of the output.
+
+    Args:
+        key (Tensor): A PRNG key of shape ``(..., 2)`` with dtype ``torch.uint64``.
+        *shape (int): The desired output shape.
+        mean (float): Mean of the normal distribution. Default: ``0.0``.
+        std (float): Standard deviation of the normal distribution. Default: ``1.0``.
+        dtype (:class:`torch.dtype`, optional): The desired dtype. Default: ``torch.float32``.
+        device (:class:`torch.device`, optional): The desired device. Default:
+            same device as ``key``.
+
+    Returns:
+        Tensor: A tensor of the given shape filled with normal random values.
+
+    Example::
+
+        >>> key = torch.func._random.key(42, device="cuda")
+        >>> torch.func._random.normal(key, (1000,))
+    """
+    if len(shape) == 1 and isinstance(shape[0], Sequence):
+        shape = tuple(shape[0])
+    if dtype is None:
+        dtype = torch.float32
+    if device is None:
+        device = key.device
+    result = torch.empty(shape, dtype=dtype, device=device)
+    return torch.ops.aten._philox_normal_(result, key, mean, std)
