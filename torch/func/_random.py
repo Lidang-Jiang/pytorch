@@ -112,6 +112,7 @@ def normal(
     std: float = 1.0,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
+    portable: bool = True,
 ) -> torch.Tensor:
     r"""Generate normally distributed random values from a stateless PRNG key.
 
@@ -132,6 +133,13 @@ def normal(
         dtype (:class:`torch.dtype`, optional): The desired dtype. Default: ``torch.float32``.
         device (:class:`torch.device`, optional): The desired device. Default:
             same device as ``key``.
+        portable (bool): If ``True`` (default), the output is identical
+            across GPU types for the same key. CPU and CUDA outputs are close
+            but may not be bitwise identical due to different transcendental
+            function implementations used in the Box-Muller transform. If
+            ``False``, device-specific optimizations may produce more
+            significantly different values across devices but may offer
+            better performance.
 
     Returns:
         Tensor: A tensor of the given shape filled with normal random values.
@@ -148,7 +156,7 @@ def normal(
     if device is None:
         device = key.device
     result = torch.empty(shape, dtype=dtype, device=device)
-    return torch.ops.aten._philox_normal_(result, key, mean, std)
+    return torch.ops.aten._philox_normal_(result, key, mean, std, portable)
 
 
 def uniform(
@@ -158,6 +166,7 @@ def uniform(
     high: float = 1.0,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
+    portable: bool = True,
 ) -> torch.Tensor:
     r"""Generate uniformly distributed random values from a stateless PRNG key.
 
@@ -177,6 +186,10 @@ def uniform(
         dtype (:class:`torch.dtype`, optional): The desired dtype. Default: ``torch.float32``.
         device (:class:`torch.device`, optional): The desired device. Default:
             same device as ``key``.
+        portable (bool): If ``True`` (default), the output is identical
+            across CPU, CUDA, and different GPU types for the same key. If
+            ``False``, device-specific optimizations may produce different
+            values across devices but may offer better performance.
 
     Returns:
         Tensor: A tensor of the given shape filled with uniform random values.
@@ -193,4 +206,4 @@ def uniform(
     if device is None:
         device = key.device
     result = torch.empty(shape, dtype=dtype, device=device)
-    return torch.ops.aten._philox_uniform_(result, key, low, high)
+    return torch.ops.aten._philox_uniform_(result, key, low, high, portable)
