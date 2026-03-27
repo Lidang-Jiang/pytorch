@@ -4366,7 +4366,13 @@ class Scheduler:
                         timing = choice.bmreq.benchmark()
                         extern_time = min(extern_time, timing)
 
-                ms2 = node2._get_estimated_runtime()
+                if extern_time == float("inf"):
+                    fusion_log.debug(
+                        "No extern callers found, skipping fusion-time autotuning"
+                    )
+                    return FusionResult.fuse(False)
+
+                ms2, _ = self.benchmark_fused_nodes(node_list_2)
 
                 # Compile all Triton choices with fusion
                 future_choices: list[tuple[Any, LambdaFuture | None, ModuleType]] = []
@@ -4387,21 +4393,29 @@ class Scheduler:
                 if not future_choices:
                     return FusionResult.fuse(False)
 
-                min_ms_fused, ms_fused_choice, new_timings = (
-                    self._benchmark_fused_choices(
-                        multi_node, future_choices, device, epilogue_fusion
+                def benchmark_fused_autotune() -> bool:
+                    assert isinstance(multi_node, ir.MultiTemplateBuffer)
+                    min_ms_fused, ms_fused_choice, new_timings = (
+                        self._benchmark_fused_choices(
+                            multi_node, future_choices, device, epilogue_fusion
+                        )
                     )
+
+                    log_fusion(min_ms_fused, extern_time, ms2)
+
+                    if (
+                        min_ms_fused < (extern_time + ms2)
+                        and ms_fused_choice is not None
+                    ):
+                        # pyrefly: ignore [missing-attribute]
+                        multi_node.finalize_as_triton_caller(ms_fused_choice)
+                        multi_node._choice_timings[None] = new_timings
+                        return True
+                    return False
+
+                return FusionResult.from_callable(
+                    benchmark_fused_autotune, future_choices[0][1]
                 )
-
-                # Compare best fused vs extern + epilogue
-                log_fusion(min_ms_fused, extern_time, ms2)
-
-                if min_ms_fused < (extern_time + ms2) and ms_fused_choice is not None:
-                    multi_node.finalize_as_triton_caller(ms_fused_choice)
-                    multi_node._choice_timings[None] = new_timings
-                    return FusionResult.fuse(True)
-                else:
-                    return FusionResult.fuse(False)
 
             hint_override_best_fusion_choice: dict[
                 int | None, TritonTemplateCallerBase
